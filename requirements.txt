@@ -1,4 +1,4 @@
-    telebot
-    openai-whisper
-    moviepy
-    ffmpeg-python
+pyTelegramBotAPI==4.14.0
+moviepy==1.0.3
+openai-whisper
+ffmpeg-python
