@@ -1,4 +1,0 @@
-    telebot
-    openai-whisper
-    moviepy
-    ffmpeg-python
