@@ -1,33 +1,38 @@
-    import telebot
-    import whisper
-    import moviepy.editor as mp
-    import os
+import os, telebot, tempfile, whisper
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
 
-    BOT_TOKEN = "8722560855:AAGKsuibEb2U_5ALPHTyJie_vUrBCVhb7YM"
-    bot = telebot.TeleBot(BOT_TOKEN)
-    print("Loading Whisper Model...")
-    model = whisper.load_model("base")
-    print("Model Loaded!")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+bot = telebot.TeleBot(BOT_TOKEN)
+model = whisper.load_model("base")
+FONT_PATH = "NotoSansSinhala.ttf"
 
-    @bot.message_handler(content_types=['video','voice','audio','document'])
-    def handle_audio(message):
-        try:
-            bot.reply_to(message, "File එක ආවා! Audio හදනවා...")
-            file_info = bot.get_file(message.document.file_id if message.document else message.video.file_id if message.video else message.voice.file_id if message.voice else message.audio.file_id)
-            downloaded_file = bot.download_file(file_info.file_path)
-            with open("input.mp4", 'wb') as f: f.write(downloaded_file)
-            
-            clip = mp.VideoFileClip("input.mp4")
-            clip.audio.write_audiofile("output.mp3")
-            clip.close()
-            
-            result = model.transcribe("output.mp3", language="si")
-            text = result["text"]
-            
-            with open("output.mp3", "rb") as audio:
-                bot.send_audio(message.chat.id, audio, caption=text[:1000])
-            os.remove("input.mp4"); os.remove("output.mp3")
-        except Exception as e:
-            bot.reply_to(message, f"Error: {e}")
+@bot.message_handler(commands=['start'])
+def start(m): 
+    bot.reply_to(m, "Video එකක් එවන්න Boss ✅ Subtitle දාලා දෙන්නම්")
 
-    bot.infinity_polling()
+@bot.message_handler(content_types=['video', 'document'])
+def handle_video(m):
+    try:
+        msg = bot.reply_to(m, "⏳ Download කරනවා...")
+        file_info = bot.get_file(m.video.file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp: 
+            tmp.write(downloaded_file); video_path = tmp.name
+        
+        bot.edit_message_text("🎙️ Subtitle හදනවා...", msg.chat.id, msg.message_id)
+        result = model.transcribe(video_path, language="si")
+        
+        bot.edit_message_text("🎬 Burn කරනවා...", msg.chat.id, msg.message_id)
+        video = VideoFileClip(video_path); clips = [video]
+        for seg in result["segments"]:
+            if seg["text"].strip():
+                txt = TextClip(seg["text"], fontsize=38, font=FONT_PATH, color='white', stroke_color='black', stroke_width=2, size=(video.w*0.9, None))
+                txt = txt.set_position(('center','bottom')).set_start(seg["start"]).set_end(seg["end"]); clips.append(txt)
+        
+        output_path = video_path.replace(".mp4", "_sub.mp4")
+        CompositeVideoClip(clips).write_videofile(output_path, codec="libx264", audio_codec="aac")
+        bot.send_video(m.chat.id, open(output_path, "rb"), caption="ඉවරයි ✅")
+        os.remove(video_path); os.remove(output_path)
+    except Exception as e:
+        bot.reply_to(m, f"Error: {e}")
+bot.polling(none_stop=True)
