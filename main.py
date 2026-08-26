@@ -4,6 +4,52 @@ from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 model = whisper.load_model("base")
+
+# මේ Line එක තමයි Font Problem එක හදන්නේ
+FONT_PATH = os.path.join(os.path.dirname(__file__), "NotoSansSinhala.ttf")
+
+@bot.message_handler(commands=['start'])
+def start(m):
+    bot.reply_to(m, "Video එකක් එවන්න Boss ✔ Subtitle දලා දෙන්නම්")
+
+@bot.message_handler(content_types=['video', 'document'])
+def handle_video(m):
+    msg = bot.reply_to(m, "⏳ Download කරනවා...")
+    try:
+        file_info = bot.get_file(m.video.file_id if m.video else m.document.file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+        temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+        temp_video.write(downloaded_file)
+        temp_video.close()
+        
+        bot.reply_to(m, "🎤 Audio එකෙන් Text ගන්නවා...")
+        result = model.transcribe(temp_video.name, language="si")
+        
+        bot.reply_to(m, "✍️ Subtitle දානවා...")
+        video = VideoFileClip(temp_video.name)
+        subtitles = []
+        
+        for segment in result["segments"]:
+            txt = TextClip(segment["text"], fontsize=40, font=FONT_PATH, color='white', stroke_color='black', stroke_width=2, method='caption', size=(video.w*0.9, None)).set_position('center').set_start(segment["start"]).set_duration(segment["end"] - segment["start"])
+            subtitles.append(txt)
+            
+        final = CompositeVideoClip([video] + subtitles)
+        final.write_videofile("output.mp4", codec="libx264")
+        
+        bot.send_video(m.chat.id, open("output.mp4", "rb"))
+        bot.reply_to(m, "✅ ඉවරයි Boss")
+        
+    except Exception as e:
+        bot.reply_to(m, f"Error: {e}")
+
+print("Bot is running...")
+bot.polling()
+import os, telebot, tempfile, whisper
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+bot = telebot.TeleBot(BOT_TOKEN)
+model = whisper.load_model("base")
 FONT_PATH = "NotoSansSinhala.ttf"
 
 @bot.message_handler(commands=['start'])
